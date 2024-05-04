@@ -1,0 +1,122 @@
+---
+title: "Ham_blog"
+listing:
+  contents: posts
+  sort: "date desc"
+  type: default
+  categories: true
+  sort-ui: false
+  filter-ui: false
+page-layout: full
+title-block-banner: true
+---
+
+## What is HBayesDM
+
+Computational modeling is a growing approach in cognitive and behavioral sciences. Computational modeling is commonly distinguished from regular statistical modeling (like linear regression, t-test) by serving as in some sense a "process model" of cognition rather than mere quantitative checks on whether an effect is legitimate. However, the boundary between a statistical model and a computational model is often quite blurry. In many usage cases, well-established frameworks of computational models function as statistical models to examine effects of certain experimental manipulations. This is especially truth in the field of learning and decision-making where a wealth of established computational models under the framework of value-based decision-making and reinforcement learning exist. However, computational modeling often require a researcher to program the models from scratch because of the lack of easily accessible packages like for linear regressions and t tests. This creates a high barriers for entry. HBayesDM is a nice package created to address this issue by packaging up a wide sort of well-validated computational models of learning and decision-making so that people can easily call on them in their research just like calling on a statistical model. Moreover, this package performs Bayesian fitting for these models. Computational models in decision-making often have unconstrained parameter space and rugged terrain of likelihood function. This makes regularization important for create interpretable parameter fits. Among other advantageous, Bayesian model fitting is a very flexible and effective way of regularization.Therefore HBayesDM is a useful package for researchers in learning decision-making to leverage decades of research in computational modeling to advance of understanding of the mechanisms behind how people (and other animals) make decisions!
+
+While there already exists many good blogs on the internet for how to use different kind of computational models supported by the package, in this blog I will focus on demonstrating the model I am personal most familiar with, which is the Rescorla-Wagner model of the 2-armed bandit task.
+
+## Load packages and data
+
+```{r}
+# precompile the models if you are a frequent use. It makes fitting models quicker
+#Sys.setenv(BUILD_ALL='true')  # Build all the models on installation
+#Sys.setenv(MAKEFLAGS='-j 4')  # Use 4 cores for compilation (or the number you want)
+# install the package
+#install.packages("hBayesDM", dependencies=TRUE)
+```
+
+```{r}
+library(hBayesDM)
+
+#load the example bandit task data
+dataPath = system.file("extdata/bandit2arm_exampleData.txt", package="hBayesDM")
+df = read.table(dataPath, header = TRUE)
+# Remove NA's if there is NA data.
+```
+
+## What is a 2-armed bandit task?
+
+A 2-armed bandit task is the simplest and most classic set up for the study of reinforcement learning in humans. Reinforcement learning refers to the ability to learn from rewards. In other words, people will be able to learn overtime which action yields more reward and increase their frequencies of taking that action. In a 2-armed bandit task, there are 2 possible actions to take. Each action corresponding to playing an imaginary bandit machine once. A bandit machine is kind of casino machine that probabilistically spit out reward each time you play it. By playing it I mean pulling the lever or pressing a key on the key board. In sum, the set up is quite simple. For each participant, there are two options (or two keys to press if you will). At each trial, they can press one of the two keys. Each time they do so, they will either get an reward, or loss a reward. They do so for 100 times. The data has 4 variables:
+
+-   **subjID**: The participant's id
+
+-   **trial**: which trial
+
+-   **choice**: the key that the participant pressed at that trial. It can be either the 1st bandit machine or the 2nd.
+
+-   **outcome**: making that choice either gave the participant one more unit of reward (1) or lose one unite of reward (-1).
+
+## The Rescorla-Wagner Model
+
+The Rescorla-Wagner model is the simplest computational model of reinforcement learning. There are so many variants of this simple model that incorporate other cognitive mechanisms but Rescorla-wagner model really sets the framework here. This model has 2 parameters: the learning rate A and the inverse temperature tau. The model assumes that the learning agent stores a value representation of each of the options (bandits). If by choosing an option, the agent gains a reward, then the value associated with that option increases by 1 times A. If the agent instead receives a loss, then the value associated will decrease by 1 times A or increase by -1 times A. Here learning rate A controls how sensitive is the agent to the incoming reward information. High learning rate A means the agent reacts really quickly to each new reward information. Thus the agent learns really quickly. While low learning rate A corresponds to an agent the learns more slowly. The values were initialized to be uniform.
+
+At each trial, the agent choose each option according to the values of each option. The higher the value, the more likely the agent would choose it, corresponding to the process of reinforcement learning. The exactly probability distribution from which the choice is sampled is determined by applying the softmax function to the values. What softmax function does is nothing but converting an array of number that does sum up to 1, into an array of number that does. Softmax function can be thought of as a generalization of logistic function. In the case of a 2-armed bandit it exactly is equivalent to a logistic function. The softmax function takes in one parameter called inverse temperature. You may ask why inverse temperature. Because this softmax function originates in thermodynamics where people study temperature (sorry this is as much I know about thermodynamics haha). Higher temperature, things are noisier so behavior is more random. In the softmax function, higher the temperature (lower the inverse temperature), the more random the choice. In the extreme if the temperature is infinite (or the inverse temperature is 0), then the agent always just randomly choose an option, regardless of the learned value. On the contrary with low temperature ( an high inverse temperature), the agent always chooses the most rewarding option. The reason why the model takes in the inverse of temperature as a parameter is for numeric stability of calculation mostly.
+
+These two parameter are not orthogonal and they are very much correlated. Let is consider extreme cases. If A = 0, then no matter what tau is, the agent always chooses randomly, because it does not update values and the value for each option remains the same (as initialized). If tau = 0. then the agent entirely ignores the values and also choose randomly always. Therefore from mere behavioral data one cannot tell if the agent has A=0 or tau=0. This correlation makes Bayesian fitting extra valuable because it entails that many pairs of A and tau could fit the data equally well. However, having crazy values of parameters do not really help interpretation. After all, these 2 parameters do capture different cognitive processes. A manefasts how sensitive is an agent to reward signals, whereas tau reveals overall how "exploratory" an agent is.
+
+## Fit the model using HBayesDM
+
+```{r}
+output = bandit2arm_delta(
+  data = "example", niter = 2000, nwarmup = 1000, nchain = 4, ncore = 4)
+
+# Note: here I didn't set data=df because there is a bug in the package for the newest R version. It would have worked for R 4.1. This bug stil awaits to be fixed for the newest R version. But setting data="example" does the same thing and used this example dataset.
+```
+
+Now the model is fit! How simple! Just one line like fitting a regression model. Let us quick check if the model fitting worked.
+
+```{r}
+plot(output, type="trace", fontSize=11)
+```
+
+The trace plot looked like catepillars! So the Bayesian fitted was decent. We can proceed to interpret the parameters.
+
+## Unpack the output
+
+First, let us to at the fitted parameters. Below you see the fitted A and tau for each subject. The estimates are means of the posterior distribution.
+
+```{r}
+output$allIndPars
+```
+
+If you are interested in the detailed outcome of Bayesian fitting, you can run
+
+```{r}
+output$fit
+```
+
+This gives you the summary of full posterior distribution of each random variable in the Bayesian hierarchical model. If you are only interested in the point estimate of the parameters, you can just go with output\$allIndPars. Let us visualize the fitted parameters. HBayesDM comes with a easy plot function as well!
+
+```{r}
+plot(output)
+```
+
+If you want to visualize the full posterior for each participant you can also do that:
+
+```{r}
+plotInd(output, "A")
+```
+
+```{r}
+plotInd(output, "tau")
+```
+
+However, if you want to compare the overall parameter fit of a group of participant and compare it with another group of participant, you can directly compare the posterior of the mean. This could be useful for example in computational psychiatry, researchers may be interested in comparing the learning rate between people with depression and neurotypical people. Because we only have one example dataset, let us just compare this 20 subjects in our example data to itself, just for the sake of demonstrating the code.
+
+```{r}
+#for the learning rate 
+diffDist = output$parVals$mu_A - output$parVals$mu_A
+HDIofMCMC( diffDist ) # get the 95% density interval
+plotHDI( diffDist ) # plot the differences of the group mean
+```
+
+```{r}
+#for the inverse temperature
+diffDist = output$parVals$mu_tau - output$parVals$mu_tau
+HDIofMCMC( diffDist ) # get the 95% density interval
+plotHDI( diffDist ) # plot the differences of the group mean
+```
+
+You may wonder, why do we have parameter fits to each individual subject AND a parameter fit to the entire sample? This is akin to the hierarchical modeling in general linear regression (or mixed-effects modeling). In fact, the framework is exactly the same. You could fit the hierarchical models in a Bayesian we as well using brms package. The mu\_\[parameter\] you get from the model fit is analogous of the fixed-effects and the individual fits are analogous to the random effects. However, some papers also just ignore the mean group estimates and instead just average the individual fits and treat those as point estimates, similar to what you would do in frequentist model-fitting. Both ways are probably more or less equivalent. Since HBayesDM already nicely give you this posterior group mean estimates, why not just use it? This concludes my blog that introduces you to how to fit a simple reinforcement learning model using HBayesDM. This package as a rich repertoire of other common computational models in learning and decision-making, and the usage should be more or less the same. However, if your work requires you to build a novel model that doesn't exist in this repertoire, HBayesDM may not work for you. For example, if you are interested in combining this reinforcement learning model with a utility function, you may need to write up your own model. Nevertheless, HBayesDM is still a powerful package for research that mainly wants to leverage these tasks and computational models as tools or in other words, statistical models, to examine questions in social, clinical, or model-based cognitive neuroscience. It makes the outputs of research in computational modeling much more accessible to a wide range of researchers.
